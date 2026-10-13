@@ -1,1 +1,0 @@
-kanban board built with fast api

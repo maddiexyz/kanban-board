@@ -102,6 +102,35 @@ async def register(
     "/token",
     response_model=TokenResponse,
     summary="Authenticate and obtain JWT access token (sets HttpOnly refresh cookie)",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/x-www-form-urlencoded": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "username": {"type": "string", "description": "Email address"},
+                            "password": {"type": "string", "format": "password"},
+                            "grant_type": {"type": "string", "default": "password"},
+                            "client_id": {"type": "string"},
+                            "client_secret": {"type": "string"},
+                        },
+                        "required": ["username", "password"],
+                    }
+                },
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "email": {"type": "string", "format": "email"},
+                            "password": {"type": "string", "format": "password"},
+                        },
+                        "required": ["email", "password"],
+                    }
+                },
+            }
+        }
+    },
 )
 @router.post(
     "/login",
@@ -109,15 +138,46 @@ async def register(
     include_in_schema=False,
 )
 async def login(
-    payload: LoginRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(User).where(User.email == payload.email)
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            email = body.get("email") or body.get("username")
+            password = body.get("password")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload",
+            )
+    else:
+        try:
+            form = await request.form()
+            email = str(form.get("username") or form.get("email") or "")
+            password = str(form.get("password") or "")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid form data payload",
+            )
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Missing required fields: email/username and password",
+        )
+
+    stmt = select(User).where(User.email == email)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
