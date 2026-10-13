@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import (
     WorkspaceCreate,
+    WorkspaceUpdate,
     WorkspaceResponse,
     WorkspaceDetailResponse,
     WorkspaceMemberResponse,
@@ -227,3 +228,65 @@ async def remove_workspace_member(
     await db.commit()
 
     return MessageResponse(message="Member removed successfully")
+
+
+@router.patch(
+    "/{workspace_id}",
+    response_model=WorkspaceResponse,
+    summary="Update workspace name (requires owner or admin role)",
+)
+async def update_workspace(
+    workspace_id: uuid.UUID,
+    payload: WorkspaceUpdate,
+    member: WorkspaceMember = Depends(require_workspace_role(["owner", "admin"])),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Workspace).where(Workspace.id == workspace_id)
+    res = await db.execute(stmt)
+    workspace = res.scalar_one_or_none()
+
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+
+    if payload.name is not None:
+        workspace.name = payload.name
+
+    await db.commit()
+    await db.refresh(workspace)
+
+    return WorkspaceResponse(
+        id=workspace.id,
+        name=workspace.name,
+        created_at=workspace.created_at,
+        role=member.role,
+    )
+
+
+@router.delete(
+    "/{workspace_id}",
+    response_model=MessageResponse,
+    summary="Delete workspace (requires owner role)",
+)
+async def delete_workspace(
+    workspace_id: uuid.UUID,
+    member: WorkspaceMember = Depends(require_workspace_role(["owner"])),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(Workspace).where(Workspace.id == workspace_id)
+    res = await db.execute(stmt)
+    workspace = res.scalar_one_or_none()
+
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found",
+        )
+
+    await db.delete(workspace)
+    await db.commit()
+
+    return MessageResponse(message="Workspace deleted successfully")
+

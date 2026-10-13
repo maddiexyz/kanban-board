@@ -8,6 +8,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.workspace import Workspace
+    from app.models.user import User
 
 
 class Board(Base):
@@ -140,6 +141,11 @@ class Card(Base):
         server_default="1",
         nullable=False,
     )
+    assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -155,4 +161,8 @@ class Card(Base):
     board: Mapped["Board"] = relationship(
         "Board",
         back_populates="cards",
+    )
+    assignee: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[assignee_id],
     )

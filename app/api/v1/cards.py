@@ -114,6 +114,7 @@ async def create_card(
         board_id=column.board_id,
         title=payload.title,
         description=payload.description,
+        assignee_id=payload.assignee_id,
         rank=rank,
         version=1,
     )
@@ -121,7 +122,6 @@ async def create_card(
     await db.commit()
     await db.refresh(card)
 
-    # Check if rebalance needed
     # Check if rebalance needed
     if needs_rebalance(card.rank):
         background_tasks.add_task(bg_rebalance, card.board_id, column_id)
@@ -136,6 +136,7 @@ async def create_card(
             "board_id": str(card.board_id),
             "title": card.title,
             "description": card.description,
+            "assignee_id": str(card.assignee_id) if card.assignee_id else None,
             "rank": card.rank,
             "version": card.version,
             "actor_user_id": str(current_user.id),
@@ -174,6 +175,8 @@ async def update_card(
         card.title = payload.title
     if payload.description is not None:
         card.description = payload.description
+    if "assignee_id" in payload.model_fields_set:
+        card.assignee_id = payload.assignee_id
 
     card.version += 1
     await db.commit()
@@ -188,6 +191,7 @@ async def update_card(
             "board_id": str(card.board_id),
             "title": card.title,
             "description": card.description,
+            "assignee_id": str(card.assignee_id) if card.assignee_id else None,
             "version": card.version,
             "actor_user_id": str(current_user.id),
         },

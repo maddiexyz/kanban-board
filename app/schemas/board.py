@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CardBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
+    assignee_id: Optional[uuid.UUID] = None
 
 
 class CardCreate(CardBase):
@@ -22,6 +23,7 @@ class CardCreate(CardBase):
 class CardUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    assignee_id: Optional[uuid.UUID] = None
 
 
 class CardMoveRequest(BaseModel):
@@ -36,6 +38,7 @@ class CardResponse(CardBase):
     id: uuid.UUID
     column_id: uuid.UUID
     board_id: uuid.UUID
+    assignee_id: Optional[uuid.UUID] = None
     rank: str
     version: int
     updated_at: datetime
