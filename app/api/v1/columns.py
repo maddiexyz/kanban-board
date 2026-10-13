@@ -17,6 +17,7 @@ from app.schemas.auth import MessageResponse
 from app.api.deps import get_current_user
 from app.api.v1.boards import check_board_access
 from app.services.lexorank import between, rebalance_column_cards
+from app.services.websocket_manager import manager
 
 router = APIRouter(tags=["Columns"])
 
@@ -82,6 +83,19 @@ async def create_column(
     await db.commit()
     await db.refresh(col)
 
+    # Broadcast event
+    await manager.broadcast_event(
+        board_id,
+        "COLUMN_CREATED",
+        {
+            "column_id": str(col.id),
+            "board_id": str(board_id),
+            "title": col.title,
+            "rank": col.rank,
+            "actor_user_id": str(current_user.id),
+        },
+    )
+
     return col
 
 
@@ -101,6 +115,19 @@ async def update_column(
         column.title = payload.title
     await db.commit()
     await db.refresh(column)
+
+    # Broadcast event
+    await manager.broadcast_event(
+        column.board_id,
+        "COLUMN_UPDATED",
+        {
+            "column_id": str(column.id),
+            "board_id": str(column.board_id),
+            "title": column.title,
+            "actor_user_id": str(current_user.id),
+        },
+    )
+
     return column
 
 
@@ -115,8 +142,23 @@ async def delete_column(
     db: AsyncSession = Depends(get_db),
 ):
     column = await check_column_access(column_id, current_user, db)
+    board_id = column.board_id
+    col_id_str = str(column.id)
+
     await db.delete(column)
     await db.commit()
+
+    # Broadcast event
+    await manager.broadcast_event(
+        board_id,
+        "COLUMN_DELETED",
+        {
+            "column_id": col_id_str,
+            "board_id": str(board_id),
+            "actor_user_id": str(current_user.id),
+        },
+    )
+
     return MessageResponse(message="Column deleted successfully")
 
 
@@ -130,6 +172,18 @@ async def trigger_column_rebalance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await check_column_access(column_id, current_user, db)
+    column = await check_column_access(column_id, current_user, db)
     cards = await rebalance_column_cards(db, column_id)
+
+    # Broadcast event
+    await manager.broadcast_event(
+        column.board_id,
+        "COLUMN_REBALANCED",
+        {
+            "column_id": str(column.id),
+            "board_id": str(column.board_id),
+            "cards": [{"card_id": str(c.id), "rank": c.rank} for c in cards],
+        },
+    )
+
     return MessageResponse(message=f"Rebalanced {len(cards)} cards in column")

@@ -19,6 +19,7 @@ from app.schemas.auth import MessageResponse
 from app.api.deps import get_current_user
 from app.api.v1.boards import check_board_access
 from app.api.v1.columns import check_column_access
+from app.services.websocket_manager import manager
 from app.services.lexorank import (
     between,
     needs_rebalance,
@@ -28,23 +29,22 @@ from app.services.lexorank import (
 router = APIRouter(tags=["Cards"])
 
 
-async def bg_rebalance(column_id: uuid.UUID):
-    """Background task to rebalance column ranks when length exceeds 32 chars."""
+async def bg_rebalance(board_id: uuid.UUID, column_id: uuid.UUID):
+    """Background task to rebalance column ranks and broadcast event."""
     async with AsyncSessionLocal() as session:
         try:
-            await rebalance_column_cards(session, column_id)
+            cards = await rebalance_column_cards(session, column_id)
+            await manager.broadcast_event(
+                board_id,
+                "COLUMN_REBALANCED",
+                {
+                    "column_id": str(column_id),
+                    "board_id": str(board_id),
+                    "cards": [{"card_id": str(c.id), "rank": c.rank} for c in cards],
+                },
+            )
         except Exception as e:
             print(f"[Lexorank Background Rebalance Error]: {e}")
-
-
-async def publish_board_event(board_id: uuid.UUID, event_type: str, payload: dict):
-    """Publish real-time event to Redis channel board:{board_id}."""
-    try:
-        redis = await get_redis()
-        message = json.dumps({"type": event_type, "payload": payload})
-        await redis.publish(f"board:{board_id}", message)
-    except Exception as e:
-        print(f"[Redis Publish Warning]: {e}")
 
 
 async def check_card_access(
@@ -122,17 +122,20 @@ async def create_card(
     await db.refresh(card)
 
     # Check if rebalance needed
+    # Check if rebalance needed
     if needs_rebalance(card.rank):
-        background_tasks.add_task(bg_rebalance, column_id)
+        background_tasks.add_task(bg_rebalance, card.board_id, column_id)
 
     # Broadcast event
-    await publish_board_event(
+    await manager.broadcast_event(
         card.board_id,
         "CARD_CREATED",
         {
             "card_id": str(card.id),
             "column_id": str(column_id),
+            "board_id": str(card.board_id),
             "title": card.title,
+            "description": card.description,
             "rank": card.rank,
             "version": card.version,
             "actor_user_id": str(current_user.id),
@@ -172,8 +175,24 @@ async def update_card(
     if payload.description is not None:
         card.description = payload.description
 
+    card.version += 1
     await db.commit()
     await db.refresh(card)
+
+    await manager.broadcast_event(
+        card.board_id,
+        "CARD_UPDATED",
+        {
+            "card_id": str(card.id),
+            "column_id": str(card.column_id),
+            "board_id": str(card.board_id),
+            "title": card.title,
+            "description": card.description,
+            "version": card.version,
+            "actor_user_id": str(current_user.id),
+        },
+    )
+
     return card
 
 
@@ -195,12 +214,13 @@ async def delete_card(
     await db.delete(card)
     await db.commit()
 
-    await publish_board_event(
+    await manager.broadcast_event(
         board_id,
         "CARD_DELETED",
         {
             "card_id": card_id_str,
             "column_id": str(col_id),
+            "board_id": str(board_id),
             "actor_user_id": str(current_user.id),
         },
     )
@@ -267,10 +287,10 @@ async def move_card(
 
     # Trigger background rebalance if string length exceeds threshold
     if needs_rebalance(card.rank):
-        background_tasks.add_task(bg_rebalance, target_column_id)
+        background_tasks.add_task(bg_rebalance, card.board_id, target_column_id)
 
     # Publish real-time move event to Redis
-    await publish_board_event(
+    await manager.broadcast_event(
         card.board_id,
         "CARD_MOVED",
         {

@@ -47,8 +47,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API v1 router
+from app.api.v1.websockets import router as ws_router
+
+# Include API v1 router and direct WebSocket router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(ws_router)
 
 
 @app.get("/", tags=["General"])

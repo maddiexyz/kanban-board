@@ -1,8 +1,9 @@
 import asyncio
 import sys
 import pytest_asyncio
+from typing import Dict
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
 from sqlalchemy.pool import NullPool
 from app.core.config import settings
 from app.core.database import get_db
@@ -13,21 +14,34 @@ from main import app
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-test_engine = create_async_engine(
-    settings.DATABASE_URL,
-    poolclass=NullPool,
-)
-TestSessionLocal = async_sessionmaker(
-    bind=test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+_engines: Dict[asyncio.AbstractEventLoop, AsyncEngine] = {}
+
+
+def get_loop_engine() -> AsyncEngine:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop not in _engines:
+        _engines[loop] = create_async_engine(
+            settings.DATABASE_URL,
+            poolclass=NullPool,
+        )
+    return _engines[loop]
 
 
 async def override_get_db():
-    async with TestSessionLocal() as session:
+    eng = get_loop_engine()
+    session_factory = async_sessionmaker(
+        bind=eng,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    async with session_factory() as session:
         try:
             yield session
         finally:
