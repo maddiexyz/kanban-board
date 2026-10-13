@@ -16,6 +16,23 @@ from app.schemas.workspace import (
     AddWorkspaceMemberRequest,
     UpdateWorkspaceMemberRequest,
 )
+from app.schemas.board import (
+    BoardBase,
+    BoardCreate,
+    BoardUpdate,
+    BoardResponse,
+    BoardDetailResponse,
+    ColumnBase,
+    ColumnCreate,
+    ColumnUpdate,
+    ColumnResponse,
+    ColumnDetailResponse,
+    CardBase,
+    CardCreate,
+    CardUpdate,
+    CardMoveRequest,
+    CardResponse,
+)
 
 __all__ = [
     "UserBase",
@@ -34,4 +51,19 @@ __all__ = [
     "WorkspaceMemberResponse",
     "AddWorkspaceMemberRequest",
     "UpdateWorkspaceMemberRequest",
+    "BoardBase",
+    "BoardCreate",
+    "BoardUpdate",
+    "BoardResponse",
+    "BoardDetailResponse",
+    "ColumnBase",
+    "ColumnCreate",
+    "ColumnUpdate",
+    "ColumnResponse",
+    "ColumnDetailResponse",
+    "CardBase",
+    "CardCreate",
+    "CardUpdate",
+    "CardMoveRequest",
+    "CardResponse",
 ]
