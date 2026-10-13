@@ -11,6 +11,7 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
     try {
       if (isRegister) {
-        const res = await authApi.register(email, password);
+        const res = await authApi.register(email, password, displayName.trim() || undefined);
         onSuccess(res.user);
       } else {
         const res = await authApi.login(email, password);
@@ -94,6 +95,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegister && (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Display Name (Optional)
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Alex Morgan"
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500 transition"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Email Address

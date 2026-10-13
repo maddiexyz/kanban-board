@@ -97,11 +97,14 @@ export const CardModal: React.FC<CardModalProps> = ({
               className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
             >
               <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.user?.email || m.user_id} ({m.role === "owner" ? "Owner" : m.role})
-                </option>
-              ))}
+              {members.map((m) => {
+                const name = m.user?.display_name || m.user?.email || m.user_id;
+                return (
+                  <option key={m.user_id} value={m.user_id}>
+                    {name} ({m.role === "owner" ? "Owner" : m.role})
+                  </option>
+                );
+              })}
             </select>
           </div>
 

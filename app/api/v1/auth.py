@@ -24,7 +24,7 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     MessageResponse,
 )
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, UserUpdate
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -64,8 +64,10 @@ async def register(
         )
 
     # Create new user
+    display_name = payload.display_name or payload.email.split("@")[0].capitalize()
     new_user = User(
         email=payload.email,
+        display_name=display_name,
         hashed_password=hash_password(payload.password),
     )
     db.add(new_user)
@@ -315,3 +317,21 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update current authenticated user profile (display name)",
+)
+async def update_me(
+    payload: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.display_name is not None:
+        current_user.display_name = payload.display_name
+        await db.commit()
+        await db.refresh(current_user)
+    return current_user
+

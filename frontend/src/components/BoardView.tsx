@@ -21,6 +21,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { ColumnView } from "./ColumnView";
 import { DragOverlayCard } from "./DragOverlayCard";
 import { CardModal } from "./CardModal";
+import { ConfirmModal } from "./ConfirmModal";
 
 interface BoardViewProps {
   boardId: string;
@@ -40,6 +41,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
     type: "error" | "success" | "info";
     message: string;
   } | null>(null);
+
+  // In-app confirmations
+  const [columnToDelete, setColumnToDelete] = useState<Column | null>(null);
+  const [cardToDeleteId, setCardToDeleteId] = useState<string | null>(null);
 
   // New column state
   const [isAddingColumn, setIsAddingColumn] = useState(false);
@@ -104,17 +109,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
         version: variables.version,
       }),
     onMutate: async (newMove) => {
-      // 1. Cancel outgoing queries
       await queryClient.cancelQueries({ queryKey: ["board", boardId] });
-
-      // 2. Snapshot current state for rollback
       const previousBoard = queryClient.getQueryData<Board>(["board", boardId]);
 
-      // 3. Optimistically update TanStack cache
       if (previousBoard) {
         let movedCard: Card | null = null;
 
-        // Remove from old column
         const colsWithoutCard = previousBoard.columns.map((col) => {
           const found = col.cards.find((c) => c.id === newMove.cardId);
           if (found) {
@@ -132,7 +132,6 @@ export const BoardView: React.FC<BoardViewProps> = ({
         });
 
         if (movedCard) {
-          // Insert into target column
           const finalCols = colsWithoutCard.map((col) => {
             if (col.id === newMove.targetColumnId) {
               const updatedCards = [...col.cards, movedCard!].sort((a, b) =>
@@ -202,16 +201,17 @@ export const BoardView: React.FC<BoardViewProps> = ({
     }
   };
 
-  const handleDeleteCard = async (cardId: string) => {
+  const handleConfirmDeleteCard = async () => {
+    if (!cardToDeleteId) return;
     try {
-      await cardApi.delete(cardId);
+      await cardApi.delete(cardToDeleteId);
       queryClient.invalidateQueries({ queryKey: ["board", boardId] });
+      setCardToDeleteId(null);
     } catch (err: any) {
       setToast({ type: "error", message: err.message || "Failed to delete card" });
     }
   };
 
-  // Move card directly to a column from context menu / 3-dot options
   const handleMoveToColumn = (cardId: string, targetColumnId: string) => {
     if (!board) return;
 
@@ -223,7 +223,6 @@ export const BoardView: React.FC<BoardViewProps> = ({
     const targetCol = board.columns.find((c) => c.id === targetColumnId);
     if (!targetCol) return;
 
-    // Place at end of target column
     const lastCard = targetCol.cards[targetCol.cards.length - 1];
     const prevRank = lastCard ? lastCard.rank : null;
     const newRank = between(prevRank, null);
@@ -257,12 +256,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
     }
   };
 
-  const handleDeleteColumn = async (columnId: string) => {
-    if (!confirm("Are you sure you want to delete this column and all its cards?"))
-      return;
+  const handleConfirmDeleteColumn = async () => {
+    if (!columnToDelete) return;
     try {
-      await columnApi.delete(columnId);
+      await columnApi.delete(columnToDelete.id);
       queryClient.invalidateQueries({ queryKey: ["board", boardId] });
+      setColumnToDelete(null);
     } catch (err: any) {
       setToast({ type: "error", message: err.message || "Failed to delete column" });
     }
@@ -445,7 +444,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
       )}
 
       {/* Board Title Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5 shrink-0">
         <div>
           <h1 className="text-xl font-bold text-slate-100 tracking-tight">
             {board.title}
@@ -457,7 +456,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
         </div>
       </div>
 
-      {/* Columns Horizontal Scroll Area */}
+      {/* Columns Horizontal Scroll Area - items-stretch and min-h-0 so columns fill full height and scroll internally */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -465,7 +464,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 flex gap-5 overflow-x-auto overflow-y-hidden pb-4 items-start select-none">
+        <div className="flex-1 min-h-0 flex gap-5 overflow-x-auto overflow-y-hidden pb-2 items-stretch select-none">
           {board.columns.map((column) => (
             <ColumnView
               key={column.id}
@@ -474,14 +473,14 @@ export const BoardView: React.FC<BoardViewProps> = ({
               members={members}
               onAddCard={handleAddCard}
               onEditCard={(c) => setEditingCard(c)}
-              onDeleteCard={handleDeleteCard}
+              onDeleteCard={(cardId) => setCardToDeleteId(cardId)}
               onMoveToColumn={handleMoveToColumn}
-              onDeleteColumn={handleDeleteColumn}
+              onDeleteColumn={() => setColumnToDelete(column)}
             />
           ))}
 
           {/* Add Column Button / Form */}
-          <div className="w-80 shrink-0">
+          <div className="w-80 shrink-0 self-start">
             {isAddingColumn ? (
               <form
                 onSubmit={handleCreateColumn}
@@ -539,6 +538,26 @@ export const BoardView: React.FC<BoardViewProps> = ({
         isOpen={Boolean(editingCard)}
         onClose={() => setEditingCard(null)}
         onSave={handleSaveCard}
+      />
+
+      {/* In-app confirmation modal for Column Deletion */}
+      <ConfirmModal
+        isOpen={Boolean(columnToDelete)}
+        title="Delete Column"
+        message={`Are you sure you want to delete column "${columnToDelete?.title}" and all its ${columnToDelete?.cards.length || 0} tasks? This action cannot be undone.`}
+        confirmText="Delete Column"
+        onConfirm={handleConfirmDeleteColumn}
+        onClose={() => setColumnToDelete(null)}
+      />
+
+      {/* In-app confirmation modal for Card Deletion */}
+      <ConfirmModal
+        isOpen={Boolean(cardToDeleteId)}
+        title="Delete Task"
+        message="Are you sure you want to delete this task? This action cannot be undone."
+        confirmText="Delete Task"
+        onConfirm={handleConfirmDeleteCard}
+        onClose={() => setCardToDeleteId(null)}
       />
     </div>
   );

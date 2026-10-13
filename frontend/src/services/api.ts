@@ -60,10 +60,14 @@ async function request<T>(
 // Authentication API
 // -------------------------------------------------------------
 export const authApi = {
-  async register(email: string, password: string): Promise<AuthResponse> {
+  async register(
+    email: string,
+    password: string,
+    displayName?: string
+  ): Promise<AuthResponse> {
     const res = await request<AuthResponse>("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, display_name: displayName }),
     });
     setStoredToken(res.access_token);
     return res;
@@ -88,6 +92,13 @@ export const authApi = {
 
   async getMe(): Promise<User> {
     return request<User>("/api/auth/me");
+  },
+
+  async updateMe(displayName: string): Promise<User> {
+    return request<User>("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ display_name: displayName }),
+    });
   },
 
   async refresh(): Promise<AuthResponse> {

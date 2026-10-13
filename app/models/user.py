@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,6 +24,10 @@ class User(Base):
         unique=True,
         index=True,
         nullable=False,
+    )
+    display_name: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
     )
     hashed_password: Mapped[str] = mapped_column(
         String(255),

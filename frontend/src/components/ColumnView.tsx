@@ -67,14 +67,12 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 shrink-0 rounded-2xl p-3.5 transition-colors duration-200 border border-slate-800 ${
-        isOver
-          ? "ring-2 ring-indigo-500 bg-slate-900"
-          : "bg-slate-900/60"
+      className={`flex flex-col w-80 shrink-0 rounded-2xl p-3.5 h-full max-h-full transition-colors duration-200 border border-slate-800 ${
+        isOver ? "ring-2 ring-indigo-500 bg-slate-900" : "bg-slate-900/60"
       }`}
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-slate-100 text-sm tracking-wide">
             {column.title}
@@ -93,8 +91,8 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
         </button>
       </div>
 
-      {/* Cards Sortable Container */}
-      <div className="flex-1 overflow-y-auto min-h-[120px] max-h-[calc(100vh-230px)] pr-1">
+      {/* Cards Scrollable Container - min-h-0 allows shrinking & scrolling when cards exceed height */}
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
           {column.cards.map((card) => (
             <CardItem
@@ -116,8 +114,8 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
         )}
       </div>
 
-      {/* Add Card Section */}
-      <div className="pt-2 mt-auto">
+      {/* Add Card Section - anchored at bottom with shrink-0 */}
+      <div className="shrink-0 pt-2.5 mt-auto border-t border-slate-800/80">
         {isAdding ? (
           <form
             onSubmit={handleSubmitNewCard}
@@ -139,18 +137,21 @@ export const ColumnView: React.FC<ColumnViewProps> = ({
               className="w-full bg-slate-900 text-slate-100 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500 mb-2 resize-none"
             />
 
-            {/* Member Assignee in Inline Card Creator */}
+            {/* Member Assignee with Display Name */}
             <select
               value={newAssigneeId}
               onChange={(e) => setNewAssigneeId(e.target.value)}
               className="w-full bg-slate-900 text-slate-300 text-xs px-2 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500 mb-2"
             >
               <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  Assign: {m.user?.email || m.user_id}
-                </option>
-              ))}
+              {members.map((m) => {
+                const name = m.user?.display_name || m.user?.email || m.user_id;
+                return (
+                  <option key={m.user_id} value={m.user_id}>
+                    Assign: {name}
+                  </option>
+                );
+              })}
             </select>
 
             <div className="flex items-center justify-end gap-1.5">

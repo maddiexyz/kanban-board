@@ -6,6 +6,7 @@ from app.schemas.user import UserResponse
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
+    display_name: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
