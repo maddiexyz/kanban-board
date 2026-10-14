@@ -67,13 +67,21 @@ export const CardItem: React.FC<CardItemProps> = ({
       setShowMenu(false);
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowMenu(false);
+      }
+    }
+
     if (showMenu) {
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
       window.addEventListener("scroll", handleScrollOrResize, true);
       window.addEventListener("resize", handleScrollOrResize);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("scroll", handleScrollOrResize, true);
       window.removeEventListener("resize", handleScrollOrResize);
     };
@@ -135,12 +143,12 @@ export const CardItem: React.FC<CardItemProps> = ({
         onContextMenu={handleContextMenu}
         className={`group relative rounded-xl p-3.5 mb-2.5 transition-all cursor-grab active:cursor-grabbing select-none ${
           isOverlay
-            ? "border-indigo-500 shadow-2xl scale-105 rotate-1 bg-slate-900 border"
-            : "hover:border-slate-600 bg-slate-900/90 border border-slate-800 shadow-sm"
+            ? "border-dark_cyan-500 shadow-2xl scale-105 rotate-1 bg-ink_black-400 border"
+            : "hover:border-dark_teal-400/80 bg-ink_black-400/90 border border-dark_teal-300/40 shadow-sm"
         }`}
       >
         <div className="flex items-start justify-between gap-2">
-          <h4 className="text-sm font-semibold text-slate-100 flex-1 leading-snug break-words">
+          <h4 className="text-sm font-semibold text-vanilla_custard-900 flex-1 leading-snug break-words">
             {card.title}
           </h4>
 
@@ -150,7 +158,7 @@ export const CardItem: React.FC<CardItemProps> = ({
             type="button"
             onClick={handleOpenMenuFromButton}
             onPointerDown={(e) => e.stopPropagation()}
-            className="p-1 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition shrink-0"
+            className="p-1 text-pearl_aqua-400 hover:text-vanilla_custard-900 hover:bg-dark_teal-100 rounded-lg transition shrink-0 cursor-pointer"
             title="Card options"
           >
             <MoreVertical className="w-4 h-4" />
@@ -159,19 +167,19 @@ export const CardItem: React.FC<CardItemProps> = ({
 
         {/* Description */}
         {card.description && (
-          <p className="mt-2 text-xs text-slate-400 line-clamp-2 leading-relaxed">
+          <p className="mt-2 text-xs text-pearl_aqua-600 line-clamp-2 leading-relaxed">
             {card.description}
           </p>
         )}
 
         {/* Footer: Assignee Badge (Display Name) */}
         {assigneeName && (
-          <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-end">
+          <div className="mt-3 pt-2 border-t border-dark_teal-300/30 flex items-center justify-end">
             <div
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800/90 border border-slate-700/80 text-[11px] text-slate-300"
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-dark_teal-200/90 border border-dark_teal-300/70 text-[11px] text-pearl_aqua-700"
               title={`Assigned to ${assigneeName}`}
             >
-              <div className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[9px] font-bold">
+              <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-dark_teal-500 to-dark_cyan-500 text-white flex items-center justify-center text-[9px] font-bold">
                 {assigneeInitial}
               </div>
               <span className="max-w-[130px] truncate">{assigneeName}</span>
@@ -192,7 +200,7 @@ export const CardItem: React.FC<CardItemProps> = ({
               left: `${menuCoords.left}px`,
             }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-48 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1.5 z-[9999] animate-in fade-in zoom-in-95 duration-100"
+            className="w-48 rounded-xl bg-ink_black-400 border border-dark_teal-300 shadow-2xl shadow-ink_black-100/90 py-1.5 z-[9999] animate-in fade-in zoom-in-95 duration-100"
           >
             <button
               type="button"
@@ -201,16 +209,16 @@ export const CardItem: React.FC<CardItemProps> = ({
                 setShowMenu(false);
                 onEdit(card);
               }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-pearl_aqua-700 hover:bg-dark_teal-100 hover:text-vanilla_custard-900 transition cursor-pointer"
             >
-              <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+              <Edit2 className="w-3.5 h-3.5 text-dark_cyan-600" />
               Edit
             </button>
 
             {/* Destination Columns ("Move to >") */}
             {destinationColumns.length > 0 && (
-              <div className="border-t border-slate-800 my-1 pt-1">
-                <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="border-t border-dark_teal-300/40 my-1 pt-1">
+                <div className="px-3 py-1 text-[10px] font-semibold text-pearl_aqua-400 uppercase tracking-wider">
                   Move to
                 </div>
                 {destinationColumns.map((col) => (
@@ -222,16 +230,16 @@ export const CardItem: React.FC<CardItemProps> = ({
                       setShowMenu(false);
                       onMoveToColumn(card.id, col.id);
                     }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-slate-300 hover:bg-indigo-600/30 hover:text-indigo-200 transition"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-pearl_aqua-700 hover:bg-dark_teal-200/60 hover:text-dark_cyan-700 transition cursor-pointer"
                   >
                     <span className="truncate">{col.title}</span>
-                    <ArrowRight className="w-3 h-3 text-slate-500" />
+                    <ArrowRight className="w-3 h-3 text-dark_cyan-600" />
                   </button>
                 ))}
               </div>
             )}
 
-            <div className="border-t border-slate-800 my-1 pt-1">
+            <div className="border-t border-dark_teal-300/40 my-1 pt-1">
               <button
                 type="button"
                 onClick={(e) => {
@@ -239,7 +247,7 @@ export const CardItem: React.FC<CardItemProps> = ({
                   setShowMenu(false);
                   onDelete(card.id);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/40 transition"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-oxidized_iron-600 hover:bg-oxidized_iron-100/40 transition cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete

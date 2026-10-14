@@ -8,6 +8,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       '/api': {
@@ -17,6 +18,20 @@ export default defineConfig({
       '/ws': {
         target: 'ws://127.0.0.1:8000',
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            // Suppress harmless socket abort errors when the browser reloads or closes the tab
+            if (
+              (err as any).code === 'ECONNABORTED' ||
+              (err as any).code === 'ECONNRESET' ||
+              err.message.includes('ECONNABORTED') ||
+              err.message.includes('ECONNRESET')
+            ) {
+              return;
+            }
+            console.error('[vite ws proxy error]', err);
+          });
+        },
       },
     },
   },

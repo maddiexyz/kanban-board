@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Kanban,
   FolderKanban,
@@ -58,6 +58,41 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [showBoardMenu, setShowBoardMenu] = useState(false);
+
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
+  const boardMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on click outside or Escape
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        workspaceMenuRef.current &&
+        !workspaceMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowWorkspaceMenu(false);
+      }
+      if (
+        boardMenuRef.current &&
+        !boardMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowBoardMenu(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowWorkspaceMenu(false);
+        setShowBoardMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   // Workspace creation & renaming state
   const [newWsName, setNewWsName] = useState("");
@@ -123,39 +158,39 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-slate-950 border-b border-slate-800 px-4 py-2.5">
+      <header className="sticky top-0 z-40 w-full bg-ink_black-400/90 backdrop-blur-md border-b border-dark_teal-300/40 px-4 py-2.5">
         <div className="flex items-center justify-between gap-4 max-w-[1920px] mx-auto">
           {/* Brand & Selectors */}
           <div className="flex items-center gap-3">
             {/* Logo */}
-            <div className="flex items-center gap-2.5 pr-4 border-r border-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-600/30">
+            <div className="flex items-center gap-2.5 pr-4 border-r border-dark_teal-300/40">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-dark_teal-500 to-dark_cyan-500 flex items-center justify-center shadow-md shadow-dark_teal-500/30">
                 <Kanban className="w-4 h-4 text-white" />
               </div>
-              <span className="font-bold text-slate-100 text-sm tracking-tight">
+              <span className="font-bold text-vanilla_custard-900 text-sm tracking-tight">
                 Kanban
               </span>
             </div>
 
             {/* Workspace Dropdown */}
-            <div className="relative">
+            <div ref={workspaceMenuRef} className="relative">
               <button
                 onClick={() => {
                   setShowWorkspaceMenu(!showWorkspaceMenu);
                   setShowBoardMenu(false);
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 transition"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-ink_black-500 hover:bg-dark_teal-100 border border-dark_teal-300 text-xs text-pearl_aqua-700 transition"
               >
-                <FolderKanban className="w-3.5 h-3.5 text-indigo-400" />
+                <FolderKanban className="w-3.5 h-3.5 text-dark_cyan-600" />
                 <span className="font-medium max-w-[130px] truncate">
                   {activeWorkspace?.name || "Select Workspace"}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-pearl_aqua-400" />
               </button>
 
               {showWorkspaceMenu && (
-                <div className="absolute left-0 mt-2 w-72 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <div className="absolute left-0 mt-2 w-72 rounded-xl bg-ink_black-400 border border-dark_teal-300 shadow-2xl shadow-ink_black-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2 py-1 text-[11px] font-semibold text-pearl_aqua-600 uppercase tracking-wider flex items-center justify-between">
                     <span>Workspaces</span>
                   </div>
 
@@ -165,8 +200,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                         key={ws.id}
                         className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
                           activeWorkspace?.id === ws.id
-                            ? "bg-indigo-600/30 text-indigo-200 font-medium border border-indigo-500/30"
-                            : "text-slate-300 hover:bg-slate-800"
+                            ? "bg-dark_teal-200 text-dark_cyan-700 font-medium border border-dark_cyan-500/30"
+                            : "text-pearl_aqua-700 hover:bg-dark_teal-100 hover:text-vanilla_custard-900"
                         }`}
                       >
                         {editingWsId === ws.id ? (
@@ -179,18 +214,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                               autoFocus
                               value={editingWsName}
                               onChange={(e) => setEditingWsName(e.target.value)}
-                              className="flex-1 bg-slate-950 text-slate-100 text-xs px-2 py-1 rounded border border-slate-600 focus:outline-none"
+                              className="flex-1 bg-ink_black-200 text-vanilla_custard-900 text-xs px-2 py-1 rounded border border-dark_teal-300 focus:outline-none focus:border-dark_cyan-500"
                             />
                             <button
                               type="submit"
-                              className="p-1 text-emerald-400 hover:text-emerald-300"
+                              className="p-1 text-dark_cyan-600 hover:text-dark_cyan-700"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingWsId(null)}
-                              className="p-1 text-slate-400 hover:text-slate-300"
+                              className="p-1 text-pearl_aqua-400 hover:text-pearl_aqua-600"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -214,7 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                   setEditingWsId(ws.id);
                                   setEditingWsName(ws.name);
                                 }}
-                                className="p-1 text-slate-400 hover:text-slate-200"
+                                className="p-1 text-pearl_aqua-400 hover:text-pearl_aqua-700"
                                 title="Rename workspace"
                               >
                                 <Edit2 className="w-3 h-3" />
@@ -225,7 +260,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                     e.stopPropagation();
                                     setWorkspaceToDelete(ws);
                                   }}
-                                  className="p-1 text-slate-400 hover:text-rose-400"
+                                  className="p-1 text-pearl_aqua-400 hover:text-oxidized_iron-600"
                                   title="Delete workspace"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -238,7 +273,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ))}
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800">
+                  <div className="pt-2 border-t border-dark_teal-300/40">
                     {isCreatingWs ? (
                       <form onSubmit={handleCreateWorkspace} className="space-y-1.5">
                         <input
@@ -247,19 +282,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                           placeholder="Workspace name..."
                           value={newWsName}
                           onChange={(e) => setNewWsName(e.target.value)}
-                          className="w-full bg-slate-950 text-slate-100 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-ink_black-200 text-vanilla_custard-900 text-xs px-2.5 py-1.5 rounded-lg border border-dark_teal-300 focus:outline-none focus:border-dark_cyan-500 placeholder:text-pearl_aqua-300/60"
                         />
                         <div className="flex justify-end gap-1">
                           <button
                             type="button"
                             onClick={() => setIsCreatingWs(false)}
-                            className="text-[11px] text-slate-400 px-2 py-1 hover:text-slate-200"
+                            className="text-[11px] text-pearl_aqua-400 px-2 py-1 hover:text-pearl_aqua-600"
                           >
                             Cancel
                           </button>
                           <button
                             type="submit"
-                            className="text-[11px] px-2.5 py-1 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-500"
+                            className="text-[11px] px-2.5 py-1 rounded bg-gradient-to-r from-dark_teal-500 to-dark_cyan-500 hover:from-dark_teal-600 hover:to-dark_cyan-600 text-white font-medium shadow-sm transition"
                           >
                             Create
                           </button>
@@ -268,7 +303,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ) : (
                       <button
                         onClick={() => setIsCreatingWs(true)}
-                        className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-indigo-400 hover:bg-indigo-950/40 transition"
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-dark_cyan-600 hover:bg-dark_teal-100/50 transition"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         New Workspace
@@ -283,12 +318,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             {activeWorkspace && (
               <button
                 onClick={onOpenMembers}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-300 transition"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-ink_black-500 hover:bg-dark_teal-100 border border-dark_teal-300 text-xs text-pearl_aqua-700 transition"
                 title="Manage workspace members"
               >
-                <Users className="w-3.5 h-3.5 text-slate-400" />
+                <Users className="w-3.5 h-3.5 text-pearl_aqua-400" />
                 <span>Members</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400 font-mono">
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-dark_teal-200 text-pearl_aqua-600 font-mono">
                   {members.length}
                 </span>
               </button>
@@ -296,24 +331,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Board Dropdown */}
             {activeWorkspace && (
-              <div className="relative">
+              <div ref={boardMenuRef} className="relative">
                 <button
                   onClick={() => {
                     setShowBoardMenu(!showBoardMenu);
                     setShowWorkspaceMenu(false);
                   }}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 transition"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-ink_black-500 hover:bg-dark_teal-100 border border-dark_teal-300 text-xs text-pearl_aqua-700 transition"
                 >
-                  <Kanban className="w-3.5 h-3.5 text-indigo-400" />
+                  <Kanban className="w-3.5 h-3.5 text-dark_cyan-600" />
                   <span className="font-medium max-w-[140px] truncate">
                     {activeBoard?.title || "Select Board"}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  <ChevronDown className="w-3.5 h-3.5 text-pearl_aqua-400" />
                 </button>
 
                 {showBoardMenu && (
-                  <div className="absolute left-0 mt-2 w-72 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <div className="absolute left-0 mt-2 w-72 rounded-xl bg-ink_black-400 border border-dark_teal-300 shadow-2xl shadow-ink_black-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2 py-1 text-[11px] font-semibold text-pearl_aqua-600 uppercase tracking-wider">
                       Boards
                     </div>
 
@@ -323,8 +358,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                           key={b.id}
                           className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
                             activeBoard?.id === b.id
-                              ? "bg-indigo-600/30 text-indigo-200 font-medium border border-indigo-500/30"
-                              : "text-slate-300 hover:bg-slate-800"
+                              ? "bg-dark_teal-200 text-dark_cyan-700 font-medium border border-dark_cyan-500/30"
+                              : "text-pearl_aqua-700 hover:bg-dark_teal-100 hover:text-vanilla_custard-900"
                           }`}
                         >
                           {editingBoardId === b.id ? (
@@ -337,18 +372,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 autoFocus
                                 value={editingBoardTitle}
                                 onChange={(e) => setEditingBoardTitle(e.target.value)}
-                                className="flex-1 bg-slate-950 text-slate-100 text-xs px-2 py-1 rounded border border-slate-600 focus:outline-none"
+                                className="flex-1 bg-ink_black-200 text-vanilla_custard-900 text-xs px-2 py-1 rounded border border-dark_teal-300 focus:outline-none focus:border-dark_cyan-500"
                               />
                               <button
                                 type="submit"
-                                className="p-1 text-emerald-400 hover:text-emerald-300"
+                                className="p-1 text-dark_cyan-600 hover:text-dark_cyan-700"
                               >
                                 <Check className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingBoardId(null)}
-                                className="p-1 text-slate-400 hover:text-slate-300"
+                                className="p-1 text-pearl_aqua-400 hover:text-pearl_aqua-600"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -372,7 +407,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                     setEditingBoardId(b.id);
                                     setEditingBoardTitle(b.title);
                                   }}
-                                  className="p-1 text-slate-400 hover:text-slate-200"
+                                  className="p-1 text-pearl_aqua-400 hover:text-pearl_aqua-700"
                                   title="Rename board"
                                 >
                                   <Edit2 className="w-3 h-3" />
@@ -383,7 +418,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                                       e.stopPropagation();
                                       setBoardToDelete(b);
                                     }}
-                                    className="p-1 text-slate-400 hover:text-rose-400"
+                                    className="p-1 text-pearl_aqua-400 hover:text-oxidized_iron-600"
                                     title="Delete board"
                                   >
                                     <Trash2 className="w-3 h-3" />
@@ -395,13 +430,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                       ))}
                       {boards.length === 0 && (
-                        <div className="px-2.5 py-2 text-xs text-slate-500 italic">
+                        <div className="px-2.5 py-2 text-xs text-pearl_aqua-400 italic">
                           No boards yet
                         </div>
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-800">
+                    <div className="pt-2 border-t border-dark_teal-300/40">
                       {isCreatingBoard ? (
                         <form onSubmit={handleCreateBoard} className="space-y-1.5">
                           <input
@@ -410,19 +445,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                             placeholder="Board title..."
                             value={newBoardTitle}
                             onChange={(e) => setNewBoardTitle(e.target.value)}
-                            className="w-full bg-slate-950 text-slate-100 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500"
+                            className="w-full bg-ink_black-200 text-vanilla_custard-900 text-xs px-2.5 py-1.5 rounded-lg border border-dark_teal-300 focus:outline-none focus:border-dark_cyan-500 placeholder:text-pearl_aqua-300/60"
                           />
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
                               onClick={() => setIsCreatingBoard(false)}
-                              className="text-[11px] text-slate-400 px-2 py-1 hover:text-slate-200"
+                              className="text-[11px] text-pearl_aqua-400 px-2 py-1 hover:text-pearl_aqua-600"
                             >
                               Cancel
                             </button>
                             <button
                               type="submit"
-                              className="text-[11px] px-2.5 py-1 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-500"
+                              className="text-[11px] px-2.5 py-1 rounded bg-gradient-to-r from-dark_teal-500 to-dark_cyan-500 hover:from-dark_teal-600 hover:to-dark_cyan-600 text-white font-medium shadow-sm transition"
                             >
                               Create
                             </button>
@@ -431,7 +466,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       ) : (
                         <button
                           onClick={() => setIsCreatingBoard(true)}
-                          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-indigo-400 hover:bg-indigo-950/40 transition"
+                          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-dark_cyan-600 hover:bg-dark_teal-100/50 transition"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           New Board
@@ -450,18 +485,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition ${
                 isConnected
-                  ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
-                  : "bg-amber-950/40 border-amber-800/60 text-amber-300"
+                  ? "bg-dark_teal-100/80 border-dark_cyan-400/50 text-dark_cyan-700"
+                  : "bg-golden_orange-100/80 border-golden_orange-400/50 text-golden_orange-700"
               }`}
             >
               {isConnected ? (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <Cloud className="w-3.5 h-3.5 text-dark_cyan-600" />
                   <span>Cloud Synced</span>
                 </>
               ) : (
                 <>
-                  <CloudOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  <CloudOff className="w-3.5 h-3.5 text-golden_orange-600 animate-pulse" />
                   <span>Syncing...</span>
                 </>
               )}
@@ -469,20 +504,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* User badge with Display Name */}
             {user && (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+              <div className="flex items-center gap-2 pl-2 border-l border-dark_teal-300/40">
                 <div
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-300"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-ink_black-500 border border-dark_teal-300 text-xs text-pearl_aqua-700"
                   title={user.email}
                 >
-                  <UserIcon className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="font-semibold text-slate-100 max-w-[140px] truncate">
+                  <UserIcon className="w-3.5 h-3.5 text-dark_cyan-600" />
+                  <span className="font-semibold text-vanilla_custard-900 max-w-[140px] truncate">
                     {userDisplayName}
                   </span>
                 </div>
 
                 <button
                   onClick={onLogout}
-                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition"
+                  className="p-1.5 text-pearl_aqua-400 hover:text-oxidized_iron-600 hover:bg-oxidized_iron-100/40 rounded-xl transition"
                   title="Log Out"
                 >
                   <LogOut className="w-4 h-4" />

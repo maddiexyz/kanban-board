@@ -203,12 +203,12 @@ export function MainKanbanApp() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4 text-slate-400">
-        <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+      <div className="min-h-screen bg-ink_black-300 flex flex-col items-center justify-center gap-4 text-pearl_aqua-600">
+        <div className="w-10 h-10 rounded-xl bg-dark_teal-500/20 text-dark_cyan-600 flex items-center justify-center border border-dark_cyan-500/30 shadow-lg shadow-dark_teal-500/20">
           <Kanban className="w-5 h-5 animate-pulse" />
         </div>
         <div className="flex items-center gap-2 font-mono text-sm">
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-dark_cyan-600" />
           <span>Loading Kanban...</span>
         </div>
       </div>
@@ -216,7 +216,7 @@ export function MainKanbanApp() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="min-h-screen bg-ink_black-300 text-vanilla_custard-900 flex flex-col selection:bg-dark_cyan-500/35 selection:text-dark_cyan-900">
       {/* Top Navbar */}
       <Navbar
         workspaces={workspaces}
@@ -249,17 +249,17 @@ export function MainKanbanApp() {
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-16 h-16 rounded-3xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4 shadow-xl">
+            <div className="w-16 h-16 rounded-3xl bg-dark_teal-500/20 border border-dark_cyan-500/30 flex items-center justify-center text-dark_cyan-600 mb-4 shadow-xl shadow-dark_teal-500/20">
               <Sparkles className="w-8 h-8" />
             </div>
-            <h2 className="text-xl font-bold text-slate-200">No Board Selected</h2>
-            <p className="text-sm text-slate-400 mt-1 max-w-md">
+            <h2 className="text-xl font-bold text-vanilla_custard-900">No Board Selected</h2>
+            <p className="text-sm text-pearl_aqua-600 mt-1 max-w-md">
               Create a board to organize and collaborate on tasks.
             </p>
             {activeWorkspace && (
               <button
                 onClick={() => handleCreateBoard("Project Board")}
-                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-2xl shadow-lg shadow-indigo-600/30 transition"
+                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-dark_teal-500 to-dark_cyan-500 hover:from-dark_teal-600 hover:to-dark_cyan-600 text-white text-sm font-semibold rounded-2xl shadow-lg shadow-dark_cyan-500/25 transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Create Default Board
@@ -283,7 +283,11 @@ export function MainKanbanApp() {
       )}
 
       {/* Authentication Modal */}
-      <AuthModal isOpen={isAuthOpen} onSuccess={handleAuthSuccess} />
+      <AuthModal
+        isOpen={isAuthOpen}
+        onSuccess={handleAuthSuccess}
+        onClose={currentUser ? () => setIsAuthOpen(false) : undefined}
+      />
     </div>
   );
 }

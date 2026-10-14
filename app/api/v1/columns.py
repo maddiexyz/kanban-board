@@ -1,6 +1,6 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -56,6 +56,16 @@ async def create_column(
     db: AsyncSession = Depends(get_db),
 ):
     await check_board_access(board_id, current_user, db)
+
+    # Enforce maximum 10 columns per board
+    count_stmt = select(func.count()).select_from(Column).where(Column.board_id == board_id)
+    count_res = await db.execute(count_stmt)
+    column_count = count_res.scalar_one()
+    if column_count >= 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A board can have a maximum of 10 columns.",
+        )
 
     # Compute rank if not provided
     rank = payload.rank

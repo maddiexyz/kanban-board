@@ -49,6 +49,31 @@ export const BoardView: React.FC<BoardViewProps> = ({
   // New column state
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColTitle, setNewColTitle] = useState("");
+  const addColumnFormRef = React.useRef<HTMLFormElement>(null);
+
+  // Close Add Column form on click outside or Escape
+  React.useEffect(() => {
+    if (!isAddingColumn) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        addColumnFormRef.current &&
+        !addColumnFormRef.current.contains(e.target as Node)
+      ) {
+        setIsAddingColumn(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setIsAddingColumn(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAddingColumn]);
 
   // WebSocket connection & live synchronization
   const { isConnected } = useWebSocket(boardId);
@@ -244,6 +269,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
     e.preventDefault();
     if (!newColTitle.trim() || !board) return;
 
+    if (board.columns.length >= 10) {
+      setToast({ type: "error", message: "A board can have a maximum of 10 columns." });
+      setIsAddingColumn(false);
+      return;
+    }
+
     try {
       const lastCol = board.columns[board.columns.length - 1];
       const prevRank = lastCol ? lastCol.rank : null;
@@ -404,15 +435,15 @@ export const BoardView: React.FC<BoardViewProps> = ({
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
-        <Loader2 className="w-7 h-7 text-indigo-400 animate-spin" />
-        <p className="text-sm text-slate-400 font-medium">Loading board...</p>
+        <Loader2 className="w-7 h-7 text-dark_cyan-600 animate-spin" />
+        <p className="text-sm text-pearl_aqua-600 font-medium">Loading board...</p>
       </div>
     );
   }
 
   if (isError || !board) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-rose-400">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-oxidized_iron-600">
         <AlertTriangle className="w-8 h-8" />
         <p className="text-sm font-medium">
           {(error as any)?.message || "Failed to load board"}
@@ -428,16 +459,16 @@ export const BoardView: React.FC<BoardViewProps> = ({
         <div
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md border animate-in slide-in-from-bottom-5 duration-200 ${
             toast.type === "error"
-              ? "bg-rose-950 border-rose-700 text-rose-200"
+              ? "bg-brown_red-300 border-oxidized_iron-500 text-oxidized_iron-900"
               : toast.type === "success"
-              ? "bg-emerald-950 border-emerald-700 text-emerald-200"
-              : "bg-slate-900 border-slate-700 text-slate-200"
+              ? "bg-dark_teal-100 border-dark_cyan-500 text-dark_cyan-900"
+              : "bg-ink_black-400 border-dark_teal-300 text-vanilla_custard-900"
           }`}
         >
           {toast.type === "error" ? (
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-oxidized_iron-600 shrink-0" />
           ) : (
-            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle className="w-4 h-4 text-dark_cyan-600 shrink-0" />
           )}
           <span className="text-xs font-medium">{toast.message}</span>
         </div>
@@ -446,11 +477,11 @@ export const BoardView: React.FC<BoardViewProps> = ({
       {/* Board Title Header */}
       <div className="flex items-center justify-between mb-5 shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 tracking-tight">
+          <h1 className="text-xl font-bold text-vanilla_custard-900 tracking-tight">
             {board.title}
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {board.columns.length} columns &bull;{" "}
+          <p className="text-xs text-pearl_aqua-600 mt-0.5">
+            {board.columns.length}/10 columns &bull;{" "}
             {board.columns.reduce((sum, col) => sum + col.cards.length, 0)} cards
           </p>
         </div>
@@ -481,10 +512,20 @@ export const BoardView: React.FC<BoardViewProps> = ({
 
           {/* Add Column Button / Form */}
           <div className="w-80 shrink-0 self-start">
-            {isAddingColumn ? (
+            {board.columns.length >= 10 ? (
+              <div className="w-full flex flex-col items-center justify-center p-4 rounded-2xl bg-ink_black-400/40 border border-dashed border-dark_teal-300/40 text-center">
+                <span className="text-xs font-semibold text-pearl_aqua-600">
+                  Column Limit Reached (10/10)
+                </span>
+                <p className="text-[11px] text-pearl_aqua-400/70 mt-1">
+                  Boards allow up to 10 columns
+                </p>
+              </div>
+            ) : isAddingColumn ? (
               <form
+                ref={addColumnFormRef}
                 onSubmit={handleCreateColumn}
-                className="p-3.5 rounded-2xl bg-slate-900 border border-indigo-500/40"
+                className="p-3.5 rounded-2xl bg-ink_black-400 border border-dark_cyan-500/40"
               >
                 <input
                   type="text"
@@ -492,20 +533,20 @@ export const BoardView: React.FC<BoardViewProps> = ({
                   placeholder="Column title..."
                   value={newColTitle}
                   onChange={(e) => setNewColTitle(e.target.value)}
-                  className="w-full bg-slate-950 text-slate-100 text-xs px-3 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500 mb-3"
+                  className="w-full bg-ink_black-200 text-vanilla_custard-900 text-xs px-3 py-2 rounded-xl border border-dark_teal-300 focus:outline-none focus:border-dark_cyan-500 mb-3 placeholder:text-pearl_aqua-300/60"
                 />
                 <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setIsAddingColumn(false)}
-                    className="text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5"
+                    className="text-xs text-pearl_aqua-400 hover:text-pearl_aqua-600 px-3 py-1.5 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={!newColTitle.trim()}
-                    className="text-xs font-semibold px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition"
+                    className="text-xs font-semibold px-4 py-1.5 rounded-xl bg-gradient-to-r from-dark_teal-500 to-dark_cyan-500 hover:from-dark_teal-600 hover:to-dark_cyan-600 text-white disabled:opacity-50 transition cursor-pointer"
                   >
                     Add Column
                   </button>
@@ -514,10 +555,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
             ) : (
               <button
                 onClick={() => setIsAddingColumn(true)}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-slate-900/50 hover:bg-slate-900/80 border border-dashed border-slate-800 hover:border-indigo-500/50 text-slate-400 hover:text-slate-200 text-xs font-semibold transition"
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-ink_black-400/40 hover:bg-ink_black-400/80 border border-dashed border-dark_teal-300/50 hover:border-dark_cyan-500/60 text-pearl_aqua-600 hover:text-vanilla_custard-900 text-xs font-semibold transition cursor-pointer"
               >
-                <Plus className="w-4 h-4 text-indigo-400" />
-                Add Column
+                <Plus className="w-4 h-4 text-dark_cyan-600" />
+                Add Column ({board.columns.length}/10)
               </button>
             )}
           </div>

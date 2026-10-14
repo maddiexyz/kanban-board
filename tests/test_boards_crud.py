@@ -297,3 +297,42 @@ async def test_board_and_card_tenancy_security(async_client: AsyncClient):
         headers=headers_b,
     )
     assert forbidden_move.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_max_ten_columns_limit(async_client: AsyncClient):
+    headers, workspace_id = await setup_workspace_and_auth(async_client, "max_col_tester")
+
+    # Board starts with 3 default columns
+    b_res = await async_client.post(
+        f"/api/workspaces/{workspace_id}/boards",
+        json={"title": "Max Columns Board"},
+        headers=headers,
+    )
+    board_id = b_res.json()["id"]
+
+    detail = (await async_client.get(f"/api/boards/{board_id}", headers=headers)).json()
+    assert len(detail["columns"]) == 3
+
+    # Add 7 more columns -> total 10 columns
+    for i in range(4, 11):
+        res = await async_client.post(
+            f"/api/boards/{board_id}/columns",
+            json={"title": f"Column {i}"},
+            headers=headers,
+        )
+        assert res.status_code == 201
+
+    # Verify board has exactly 10 columns
+    detail_10 = (await async_client.get(f"/api/boards/{board_id}", headers=headers)).json()
+    assert len(detail_10["columns"]) == 10
+
+    # Attempt to add an 11th column -> must fail with 400
+    res_11 = await async_client.post(
+        f"/api/boards/{board_id}/columns",
+        json={"title": "Column 11 (Overflow)"},
+        headers=headers,
+    )
+    assert res_11.status_code == 400
+    assert "maximum of 10 columns" in res_11.json()["detail"].lower()
+
