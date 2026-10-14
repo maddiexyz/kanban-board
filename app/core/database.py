@@ -25,9 +25,18 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with get_db_context() as session:
+        yield session

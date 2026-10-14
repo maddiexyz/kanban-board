@@ -2,13 +2,14 @@ import json
 import uuid
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db, AsyncSessionLocal
+from app.core.database import get_db, get_db_context
 from app.core.redis import get_redis
 from app.models.user import User
 from app.models.board import Board, Column, Card
+from app.models.workspace import WorkspaceMember
 from app.schemas.board import (
     CardCreate,
     CardUpdate,
@@ -24,6 +25,7 @@ from app.services.lexorank import (
     between,
     needs_rebalance,
     rebalance_column_cards,
+    RankSpaceExhausted,
 )
 
 router = APIRouter(tags=["Cards"])
@@ -31,7 +33,7 @@ router = APIRouter(tags=["Cards"])
 
 async def bg_rebalance(board_id: uuid.UUID, column_id: uuid.UUID):
     """Background task to rebalance column ranks and broadcast event."""
-    async with AsyncSessionLocal() as session:
+    async with get_db_context() as session:
         try:
             cards = await rebalance_column_cards(session, column_id)
             await manager.broadcast_event(
@@ -45,6 +47,34 @@ async def bg_rebalance(board_id: uuid.UUID, column_id: uuid.UUID):
             )
         except Exception as e:
             print(f"[Lexorank Background Rebalance Error]: {e}")
+
+
+async def verify_assignee_workspace_membership(
+    board_id: uuid.UUID,
+    assignee_id: Optional[uuid.UUID],
+    db: AsyncSession,
+) -> None:
+    """Helper to verify that assignee is an active member of the workspace for target board."""
+    if assignee_id is None:
+        return
+    board_stmt = select(Board.workspace_id).where(Board.id == board_id)
+    board_res = await db.execute(board_stmt)
+    workspace_id = board_res.scalar_one_or_none()
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Board workspace not found",
+        )
+    member_stmt = select(WorkspaceMember).where(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.user_id == assignee_id,
+    )
+    member_res = await db.execute(member_stmt)
+    if not member_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assignee must be a member of the workspace",
+        )
 
 
 async def check_card_access(
@@ -83,31 +113,50 @@ async def create_card(
 ):
     column = await check_column_access(column_id, current_user, db)
 
+    # Validate assignee is a workspace member
+    if payload.assignee_id is not None:
+        await verify_assignee_workspace_membership(column.board_id, payload.assignee_id, db)
+
     # Calculate rank
     rank = payload.rank
     if not rank:
-        if payload.prev_rank or payload.next_rank:
-            rank = between(payload.prev_rank, payload.next_rank)
-        elif payload.position == "start":
-            first_stmt = (
-                select(Card.rank)
-                .where(Card.column_id == column_id)
-                .order_by(Card.rank.asc())
-                .limit(1)
+        try:
+            if payload.prev_rank or payload.next_rank:
+                rank = between(payload.prev_rank, payload.next_rank)
+            elif payload.position == "start":
+                first_stmt = (
+                    select(Card.rank)
+                    .where(Card.column_id == column_id)
+                    .order_by(Card.rank.asc())
+                    .limit(1)
+                )
+                first_res = await db.execute(first_stmt)
+                first_rank = first_res.scalar_one_or_none()
+                rank = between(None, first_rank)
+            else:
+                last_stmt = (
+                    select(Card.rank)
+                    .where(Card.column_id == column_id)
+                    .order_by(Card.rank.desc())
+                    .limit(1)
+                )
+                last_res = await db.execute(last_stmt)
+                last_rank = last_res.scalar_one_or_none()
+                rank = between(last_rank, None)
+        except RankSpaceExhausted:
+            # Rebalance synchronously to recover rank space, then recalculate
+            cards = await rebalance_column_cards(db, column_id)
+            if payload.position == "start":
+                first_rank = cards[0].rank if cards else None
+                rank = between(None, first_rank)
+            else:
+                last_rank = cards[-1].rank if cards else None
+                rank = between(last_rank, None)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
             )
-            first_res = await db.execute(first_stmt)
-            first_rank = first_res.scalar_one_or_none()
-            rank = between(None, first_rank)
-        else:
-            last_stmt = (
-                select(Card.rank)
-                .where(Card.column_id == column_id)
-                .order_by(Card.rank.desc())
-                .limit(1)
-            )
-            last_res = await db.execute(last_stmt)
-            last_rank = last_res.scalar_one_or_none()
-            rank = between(last_rank, None)
 
     card = Card(
         column_id=column_id,
@@ -171,14 +220,34 @@ async def update_card(
     db: AsyncSession = Depends(get_db),
 ):
     card = await check_card_access(card_id, current_user, db)
-    if payload.title is not None:
-        card.title = payload.title
-    if payload.description is not None:
-        card.description = payload.description
-    if "assignee_id" in payload.model_fields_set:
-        card.assignee_id = payload.assignee_id
 
-    card.version += 1
+    # Validate assignee if updating
+    if "assignee_id" in payload.model_fields_set and payload.assignee_id is not None:
+        await verify_assignee_workspace_membership(card.board_id, payload.assignee_id, db)
+
+    # Atomic optimistic update
+    values_to_update = {"version": Card.version + 1}
+    if payload.title is not None:
+        values_to_update["title"] = payload.title
+    if payload.description is not None:
+        values_to_update["description"] = payload.description
+    if "assignee_id" in payload.model_fields_set:
+        values_to_update["assignee_id"] = payload.assignee_id
+
+    stmt = (
+        update(Card)
+        .where(Card.id == card.id)
+        .values(**values_to_update)
+        .returning(Card.version)
+    )
+    res = await db.execute(stmt)
+    if res.scalar_one_or_none() is None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Conflict: Card was modified concurrently",
+        )
+
     await db.commit()
     await db.refresh(card)
 
@@ -257,20 +326,25 @@ async def move_card(
                 detail="Target column does not belong to the same board",
             )
 
-    # Optimistic Concurrency Control Check
-    if payload.version is not None and card.version != payload.version:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Conflict: Card has been modified. Server version is {card.version}, payload was {payload.version}.",
-        )
-
     # Compute new rank
     new_rank = payload.rank
     if not new_rank:
-        if payload.prev_rank is not None or payload.next_rank is not None:
-            new_rank = between(payload.prev_rank, payload.next_rank)
-        else:
-            # Place at tail of target column
+        try:
+            if payload.prev_rank is not None or payload.next_rank is not None:
+                new_rank = between(payload.prev_rank, payload.next_rank)
+            else:
+                # Place at tail of target column
+                last_stmt = (
+                    select(Card.rank)
+                    .where(Card.column_id == target_column_id, Card.id != card.id)
+                    .order_by(Card.rank.desc())
+                    .limit(1)
+                )
+                last_res = await db.execute(last_stmt)
+                last_rank = last_res.scalar_one_or_none()
+                new_rank = between(last_rank, None)
+        except RankSpaceExhausted:
+            cards = await rebalance_column_cards(db, target_column_id)
             last_stmt = (
                 select(Card.rank)
                 .where(Card.column_id == target_column_id, Card.id != card.id)
@@ -280,11 +354,42 @@ async def move_card(
             last_res = await db.execute(last_stmt)
             last_rank = last_res.scalar_one_or_none()
             new_rank = between(last_rank, None)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
 
-    # O(1) Reorder: Update only this single card row
-    card.column_id = target_column_id
-    card.rank = new_rank
-    card.version += 1
+    current_card_version = card.version
+
+    # Quick check
+    if payload.version is not None and current_card_version != payload.version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Conflict: Card has been modified. Server version is {current_card_version}, payload was {payload.version}.",
+        )
+
+    # Atomic UPDATE with optimistic concurrency
+    stmt = (
+        update(Card)
+        .where(Card.id == card.id)
+    )
+    if payload.version is not None:
+        stmt = stmt.where(Card.version == payload.version)
+
+    stmt = stmt.values(
+        column_id=target_column_id,
+        rank=new_rank,
+        version=Card.version + 1,
+    ).returning(Card.version)
+
+    res = await db.execute(stmt)
+    if res.scalar_one_or_none() is None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Conflict: Card has been modified. Server version is {current_card_version}, payload was {payload.version}.",
+        )
 
     await db.commit()
     await db.refresh(card)

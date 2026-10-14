@@ -144,3 +144,67 @@ async def test_workspace_membership_invitation_and_role_guards(async_client: Asy
         headers=headers_b,
     )
     assert revoked_access.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_workspace_member_role_update_and_protection(async_client: AsyncClient):
+    token_owner, _, _ = await create_user_and_token(async_client, "ws_owner")
+    token_admin, email_admin, id_admin = await create_user_and_token(async_client, "ws_admin")
+    token_peer, email_peer, id_peer = await create_user_and_token(async_client, "ws_peer")
+
+    headers_owner = {"Authorization": f"Bearer {token_owner}"}
+    headers_admin = {"Authorization": f"Bearer {token_admin}"}
+
+    # 1. Create workspace
+    create_res = await async_client.post(
+        "/api/workspaces",
+        json={"name": "Security Team"},
+        headers=headers_owner,
+    )
+    ws_id = create_res.json()["id"]
+
+    # 2. Add members
+    await async_client.post(
+        f"/api/workspaces/{ws_id}/members",
+        json={"email": email_admin, "role": "member"},
+        headers=headers_owner,
+    )
+    await async_client.post(
+        f"/api/workspaces/{ws_id}/members",
+        json={"email": email_peer, "role": "member"},
+        headers=headers_owner,
+    )
+
+    # 3. Owner promotes both to 'admin'
+    update_res = await async_client.patch(
+        f"/api/workspaces/{ws_id}/members/{id_admin}",
+        json={"role": "admin"},
+        headers=headers_owner,
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["role"] == "admin"
+
+    await async_client.patch(
+        f"/api/workspaces/{ws_id}/members/{id_peer}",
+        json={"role": "admin"},
+        headers=headers_owner,
+    )
+
+    # 4. Admin tries to remove another admin -> 403 Forbidden (only owner can remove admins)
+    admin_removes_admin = await async_client.delete(
+        f"/api/workspaces/{ws_id}/members/{id_peer}",
+        headers=headers_admin,
+    )
+    assert admin_removes_admin.status_code == 403
+    assert "only workspace owners can remove admin members" in admin_removes_admin.json()["detail"].lower()
+
+    # 5. User enumeration protection: adding non-existent email returns generic error
+    fake_email = f"nonexistent_{uuid.uuid4().hex[:8]}@example.com"
+    enum_res = await async_client.post(
+        f"/api/workspaces/{ws_id}/members",
+        json={"email": fake_email, "role": "member"},
+        headers=headers_owner,
+    )
+    assert enum_res.status_code == 404
+    assert enum_res.json()["detail"] == "Cannot add user to workspace"
+

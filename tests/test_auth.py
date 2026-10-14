@@ -98,3 +98,81 @@ async def test_token_refresh_and_logout(async_client: AsyncClient):
         },
     )
     assert logout_res.status_code == 200
+
+    # Verification: Access token is blocked immediately
+    revoked_access_res = await async_client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {new_token}"},
+    )
+    assert revoked_access_res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_password_length_limits(async_client: AsyncClient):
+    # Passwords > 72 bytes must be rejected with 422 Unprocessable Entity
+    email = f"toolong_{uuid.uuid4().hex[:8]}@example.com"
+    long_password = "A" * 73
+    res = await async_client.post(
+        "/api/auth/register",
+        json={"email": email, "password": long_password},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_email_case_insensitivity(async_client: AsyncClient):
+    base_id = uuid.uuid4().hex[:8]
+    email_mixed = f"User_{base_id}@Example.COM"
+    email_lower = f"user_{base_id}@example.com"
+    password = "ValidPassword123!"
+
+    # 1. Register with mixed-case email
+    reg_res = await async_client.post(
+        "/api/auth/register",
+        json={"email": email_mixed, "password": password},
+    )
+    assert reg_res.status_code == 201
+    assert reg_res.json()["user"]["email"] == email_lower
+
+    # 2. Duplicate registration with lower-case must return 400
+    dup_res = await async_client.post(
+        "/api/auth/register",
+        json={"email": email_lower, "password": password},
+    )
+    assert dup_res.status_code == 400
+
+    # 3. Login with mixed-case works
+    login_res = await async_client.post(
+        "/api/auth/token",
+        json={"email": email_mixed, "password": password},
+    )
+    assert login_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_replay_refresh_token_blocked(async_client: AsyncClient):
+    email = f"replay_{uuid.uuid4().hex[:8]}@example.com"
+    password = "ValidPassword123!"
+
+    reg_res = await async_client.post(
+        "/api/auth/register",
+        json={"email": email, "password": password},
+    )
+    assert reg_res.status_code == 201
+    refresh_cookie = reg_res.cookies.get("refresh_token")
+    assert refresh_cookie is not None
+
+    # First refresh succeeds
+    ref1 = await async_client.post(
+        "/api/auth/refresh",
+        headers={"Cookie": f"refresh_token={refresh_cookie}"},
+    )
+    assert ref1.status_code == 200
+
+    # Replay of the SAME refresh token fails with 401
+    ref2 = await async_client.post(
+        "/api/auth/refresh",
+        headers={"Cookie": f"refresh_token={refresh_cookie}"},
+    )
+    assert ref2.status_code == 401
+

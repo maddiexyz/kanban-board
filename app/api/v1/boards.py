@@ -32,15 +32,14 @@ async def check_board_access(
     board_id: uuid.UUID,
     user: User,
     db: AsyncSession,
+    load_children: bool = False,
 ) -> Board:
     """Helper to verify user has workspace membership for target board."""
-    stmt = (
-        select(Board)
-        .options(
+    stmt = select(Board).where(Board.id == board_id)
+    if load_children:
+        stmt = stmt.options(
             selectinload(Board.columns).selectinload(Column.cards)
         )
-        .where(Board.id == board_id)
-    )
     res = await db.execute(stmt)
     board = res.scalar_one_or_none()
 
@@ -127,7 +126,7 @@ async def get_board(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await check_board_access(board_id, current_user, db)
+    board = await check_board_access(board_id, current_user, db, load_children=True)
 
     # Sort columns by rank, and each column's cards by rank
     sorted_columns = sorted(board.columns, key=lambda c: c.rank)

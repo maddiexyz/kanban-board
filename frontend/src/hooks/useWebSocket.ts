@@ -24,6 +24,8 @@ export function useWebSocket(boardId: string | null) {
 
     ws.onopen = () => {
       setIsConnected(true);
+      // Invalidate query to resync any state missed during disconnect
+      queryClient.invalidateQueries({ queryKey: ["board", boardId] });
       // Heartbeat ping every 25s
       pingIntervalRef.current = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -79,7 +81,7 @@ export function useWebSocket(boardId: string | null) {
               const updatedColumns = columnsWithoutCard.map((col) => {
                 if (col.id === target_column_id) {
                   const newCards = [...col.cards, movedCard!].sort((a, b) =>
-                    a.rank.localeCompare(b.rank)
+                    a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
                   );
                   return { ...col, cards: newCards };
                 }
@@ -109,7 +111,7 @@ export function useWebSocket(boardId: string | null) {
                   // Avoid duplicates
                   if (col.cards.some((c) => c.id === card_id)) return col;
                   const newCards = [...col.cards, newCard].sort((a, b) =>
-                    a.rank.localeCompare(b.rank)
+                    a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
                   );
                   return { ...col, cards: newCards };
                 }
@@ -159,7 +161,7 @@ export function useWebSocket(boardId: string | null) {
                 cards: [],
               };
               const newCols = [...oldBoard.columns, newCol].sort((a, b) =>
-                a.rank.localeCompare(b.rank)
+                a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
               );
               return { ...oldBoard, columns: newCols };
             }

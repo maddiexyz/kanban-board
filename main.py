@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -65,7 +65,7 @@ async def root():
 
 
 @app.get("/health", tags=["General"])
-async def health_check():
+async def health_check(response: Response):
     db_healthy = False
     redis_healthy = False
 
@@ -83,8 +83,12 @@ async def health_check():
     except Exception:
         pass
 
+    is_healthy = db_healthy and redis_healthy
+    if not is_healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
-        "status": "healthy" if (db_healthy and redis_healthy) else "degraded",
+        "status": "healthy" if is_healthy else "degraded",
         "database": "connected" if db_healthy else "disconnected",
         "redis": "connected" if redis_healthy else "disconnected",
     }

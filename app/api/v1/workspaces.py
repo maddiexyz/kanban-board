@@ -156,7 +156,7 @@ async def add_workspace_member(
     if not target_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with email '{payload.email}' not found",
+            detail="Cannot add user to workspace",
         )
 
     # Check if already a member
@@ -224,10 +224,56 @@ async def remove_workspace_member(
             detail="Cannot remove the workspace owner",
         )
 
+    if target_member.role == "admin" and member.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only workspace owners can remove admin members",
+        )
+
     await db.delete(target_member)
     await db.commit()
 
     return MessageResponse(message="Member removed successfully")
+
+
+@router.patch(
+    "/{workspace_id}/members/{user_id}",
+    response_model=WorkspaceMemberResponse,
+    summary="Update a workspace member's role (requires owner role)",
+)
+async def update_workspace_member_role(
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    payload: UpdateWorkspaceMemberRequest,
+    member: WorkspaceMember = Depends(require_workspace_role(["owner"])),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(WorkspaceMember)
+        .options(selectinload(WorkspaceMember.user))
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+        )
+    )
+    res = await db.execute(stmt)
+    target_member = res.scalar_one_or_none()
+    if not target_member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found in workspace",
+        )
+
+    target_member.role = payload.role
+    await db.commit()
+    await db.refresh(target_member)
+
+    return WorkspaceMemberResponse(
+        workspace_id=target_member.workspace_id,
+        user_id=target_member.user_id,
+        role=target_member.role,
+        user=UserResponse.model_validate(target_member.user) if target_member.user else None,
+    )
 
 
 @router.patch(

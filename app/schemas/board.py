@@ -14,9 +14,9 @@ class CardBase(BaseModel):
 
 
 class CardCreate(CardBase):
-    rank: Optional[str] = None
-    prev_rank: Optional[str] = None
-    next_rank: Optional[str] = None
+    rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    prev_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    next_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
     position: Optional[Literal["start", "end"]] = "end"
 
 
@@ -28,9 +28,9 @@ class CardUpdate(BaseModel):
 
 class CardMoveRequest(BaseModel):
     target_column_id: Optional[uuid.UUID] = None
-    rank: Optional[str] = None
-    prev_rank: Optional[str] = None
-    next_rank: Optional[str] = None
+    rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    prev_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    next_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
     version: Optional[int] = None  # Optimistic concurrency check
 
 
@@ -54,9 +54,9 @@ class ColumnBase(BaseModel):
 
 
 class ColumnCreate(ColumnBase):
-    rank: Optional[str] = None
-    prev_rank: Optional[str] = None
-    next_rank: Optional[str] = None
+    rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    prev_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
+    next_rank: Optional[str] = Field(None, max_length=64, pattern=r"^[0-9a-z|:]+$")
 
 
 class ColumnUpdate(BaseModel):

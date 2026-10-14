@@ -6,17 +6,26 @@ import jwt
 from app.core.config import settings
 
 
+DUMMY_PASSWORD_HASH = "$2b$12$QM45QQHSbqWk/.EnkJRlruyQ1blNlZIue3VJRp7xK1mL5SVSESUrC"
+
+
 def hash_password(password: str) -> str:
-    """Hash a plaintext password using bcrypt."""
+    """Hash a plaintext password using bcrypt, enforcing 72-byte max length safely."""
+    pw_bytes = password.encode("utf-8")
+    if len(pw_bytes) > 72:
+        pw_bytes = pw_bytes[:72]
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    return bcrypt.hashpw(pw_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plaintext password against a bcrypt hash."""
+    """Verify a plaintext password against a bcrypt hash, enforcing 72-byte max length."""
     try:
+        pw_bytes = plain_password.encode("utf-8")
+        if len(pw_bytes) > 72:
+            pw_bytes = pw_bytes[:72]
         return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
+            pw_bytes,
             hashed_password.encode("utf-8")
         )
     except Exception:

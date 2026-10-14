@@ -102,6 +102,21 @@ def test_generate_spaced_ranks():
     assert ranks == expected
     assert ranks == sorted(ranks)
 
+    # Test count >= 10 ensuring lexicographical order is preserved
+    ranks_12 = generate_spaced_ranks(12)
+    assert len(ranks_12) == 12
+    assert ranks_12 == sorted(ranks_12)
+    assert len(set(ranks_12)) == 12
+
+
+def test_rank_space_exhausted():
+    from app.services.lexorank import RankSpaceExhausted
+    with pytest.raises(RankSpaceExhausted):
+        between("0|100000:", "0|100001:")
+
+    with pytest.raises(RankSpaceExhausted):
+        between(None, "0|000001:")
+
 
 def test_needs_rebalance():
     """Verify rank length rebalance detection at 32 characters."""
@@ -111,3 +126,4 @@ def test_needs_rebalance():
     # 33 character rank
     long_rank = "a" * 33
     assert needs_rebalance(long_rank)
+

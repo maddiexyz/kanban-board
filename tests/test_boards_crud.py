@@ -336,3 +336,94 @@ async def test_max_ten_columns_limit(async_client: AsyncClient):
     assert res_11.status_code == 400
     assert "maximum of 10 columns" in res_11.json()["detail"].lower()
 
+
+@pytest.mark.asyncio
+async def test_assignee_workspace_membership_guard(async_client: AsyncClient):
+    headers_a, ws_a = await setup_workspace_and_auth(async_client, "owner_assignee")
+    headers_b, _ = await setup_workspace_and_auth(async_client, "outsider_assignee")
+
+    # Get user B profile to obtain user B's ID
+    user_b_id = (await async_client.get("/api/auth/me", headers=headers_b)).json()["id"]
+
+    # User A creates board
+    b_res = await async_client.post(
+        f"/api/workspaces/{ws_a}/boards",
+        json={"title": "Assignment Board"},
+        headers=headers_a,
+    )
+    board = b_res.json()
+    detail = (await async_client.get(f"/api/boards/{board['id']}", headers=headers_a)).json()
+    col_id = detail["columns"][0]["id"]
+
+    # 1. Attempt to create card with outsider assignee -> 400
+    bad_create = await async_client.post(
+        f"/api/columns/{col_id}/cards",
+        json={"title": "Task", "assignee_id": user_b_id},
+        headers=headers_a,
+    )
+    assert bad_create.status_code == 400
+    assert "member of the workspace" in bad_create.json()["detail"].lower()
+
+    # 2. Create card without assignee
+    card = (await async_client.post(
+        f"/api/columns/{col_id}/cards",
+        json={"title": "Valid Task"},
+        headers=headers_a,
+    )).json()
+
+    # 3. Attempt to update card with outsider assignee -> 400
+    bad_update = await async_client.patch(
+        f"/api/cards/{card['id']}",
+        json={"assignee_id": user_b_id},
+        headers=headers_a,
+    )
+    assert bad_update.status_code == 400
+    assert "member of the workspace" in bad_update.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_column_delete_and_rebalance_role_guards(async_client: AsyncClient):
+    headers_owner, ws_id = await setup_workspace_and_auth(async_client, "ws_owner")
+    headers_member, _ = await setup_workspace_and_auth(async_client, "ws_member")
+
+    member_email = (await async_client.get("/api/auth/me", headers=headers_member)).json()["email"]
+
+    # Invite user as a regular 'member'
+    await async_client.post(
+        f"/api/workspaces/{ws_id}/members",
+        json={"email": member_email, "role": "member"},
+        headers=headers_owner,
+    )
+
+    # Owner creates board
+    b_res = await async_client.post(
+        f"/api/workspaces/{ws_id}/boards",
+        json={"title": "Column Guard Board"},
+        headers=headers_owner,
+    )
+    board_id = b_res.json()["id"]
+    detail = (await async_client.get(f"/api/boards/{board_id}", headers=headers_owner)).json()
+    target_col = detail["columns"][0]["id"]
+
+    # Regular member tries to delete column -> 403 Forbidden
+    del_res = await async_client.delete(
+        f"/api/columns/{target_col}",
+        headers=headers_member,
+    )
+    assert del_res.status_code == 403
+
+    # Regular member tries to trigger rebalance -> 403 Forbidden
+    reb_res = await async_client.post(
+        f"/api/columns/{target_col}/rebalance",
+        headers=headers_member,
+    )
+    assert reb_res.status_code == 403
+
+    # Owner deletes column -> 200 OK
+    owner_del = await async_client.delete(
+        f"/api/columns/{target_col}",
+        headers=headers_owner,
+    )
+    assert owner_del.status_code == 200
+
+

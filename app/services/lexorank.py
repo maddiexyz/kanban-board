@@ -9,6 +9,11 @@ DEFAULT_INITIAL_RANK = "0|100000:"
 MAX_RANK_LENGTH = 32
 
 
+class RankSpaceExhausted(ValueError):
+    """Raised when integer bucket or string rank space is exhausted and rebalancing is required."""
+    pass
+
+
 def between(prev_rank: Optional[str] = None, next_rank: Optional[str] = None) -> str:
     """
     Compute a Lexorank string strictly between prev_rank and next_rank:
@@ -34,9 +39,10 @@ def between(prev_rank: Optional[str] = None, next_rank: Optional[str] = None) ->
             r_clean = r.rstrip(":")
             if r_clean.isdigit():
                 val = int(r_clean)
-                if val > 10000:
+                if val > 1:
                     return f"{bucket}|{val // 2:06d}:"
-                return f"{bucket}|{val // 2:06d}:"
+                else:
+                    raise RankSpaceExhausted(f"Rank space exhausted before '{next_rank}'")
             return f"{bucket}|{between(None, r_clean)}:"
         
         idx = ALPHABET.index(next_rank[0]) if next_rank[0] in ALPHABET else 12
@@ -65,7 +71,7 @@ def between(prev_rank: Optional[str] = None, next_rank: Optional[str] = None) ->
                     step = max(1, (999999 - val) // 2)
                     return f"{bucket}|{val + step:06d}:"
                 else:
-                    return f"{bucket}|{r_clean}n:"
+                    raise RankSpaceExhausted(f"Rank space exhausted after '{prev_rank}'")
             return f"{bucket}|{between(r_clean, None)}:"
 
         idx = ALPHABET.index(prev_rank[0]) if prev_rank[0] in ALPHABET else 12
@@ -88,7 +94,7 @@ def between(prev_rank: Optional[str] = None, next_rank: Optional[str] = None) ->
                 n1, n2 = int(r1_c), int(r2_c)
                 if n2 - n1 > 1:
                     return f"{b1}|{(n1 + n2) // 2:06d}:"
-                return f"{b1}|{n1}5:"
+                raise RankSpaceExhausted(f"Rank space exhausted between '{prev_rank}' and '{next_rank}'")
             return f"{b1}|{between(r1_c, r2_c)}:"
 
     # General pure string Lexorank between prev_rank and next_rank
@@ -143,9 +149,16 @@ def between(prev_rank: Optional[str] = None, next_rank: Optional[str] = None) ->
 def generate_spaced_ranks(count: int, bucket: str = "0", step: int = 100000) -> List[str]:
     """
     Generate evenly spaced ranks for rebalancing or column initialization.
+    Guarantees strict lexicographical monotonic ordering for any count.
     Example: ['0|100000:', '0|200000:', '0|300000:', ...]
     """
-    return [f"{bucket}|{(i + 1) * step:06d}:" for i in range(count)]
+    if count <= 0:
+        return []
+    max_val = 999999
+    effective_step = step
+    if (count + 1) * step > max_val:
+        effective_step = max(1, max_val // (count + 1))
+    return [f"{bucket}|{(i + 1) * effective_step:06d}:" for i in range(count)]
 
 
 def needs_rebalance(rank: str, max_length: int = MAX_RANK_LENGTH) -> bool:
@@ -156,12 +169,13 @@ def needs_rebalance(rank: str, max_length: int = MAX_RANK_LENGTH) -> bool:
 async def rebalance_column_cards(db: AsyncSession, column_id: uuid.UUID) -> List[Card]:
     """
     Rebalance all cards in a column by re-spacing their ranks evenly.
-    Runs when rank strings exceed 32 characters or when requested.
+    Uses row-level locking (with_for_update) to prevent concurrent rebalance race conditions.
     """
     stmt = (
         select(Card)
         .where(Card.column_id == column_id)
         .order_by(Card.rank.asc())
+        .with_for_update()
     )
     res = await db.execute(stmt)
     cards = list(res.scalars().all())
@@ -172,6 +186,7 @@ async def rebalance_column_cards(db: AsyncSession, column_id: uuid.UUID) -> List
     new_ranks = generate_spaced_ranks(len(cards))
     for card, new_rank in zip(cards, new_ranks):
         card.rank = new_rank
+        card.version += 1
 
     await db.commit()
     return cards

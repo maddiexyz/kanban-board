@@ -32,7 +32,12 @@ def get_loop_engine() -> AsyncEngine:
     return _engines[loop]
 
 
-async def override_get_db():
+from contextlib import asynccontextmanager
+import app.core.database as db_mod
+
+
+@asynccontextmanager
+async def override_get_db_context():
     eng = get_loop_engine()
     session_factory = async_sessionmaker(
         bind=eng,
@@ -48,7 +53,14 @@ async def override_get_db():
             await session.close()
 
 
+async def override_get_db():
+    async with override_get_db_context() as session:
+        yield session
+
+
 app.dependency_overrides[get_db] = override_get_db
+db_mod.get_db_context = override_get_db_context
+
 
 
 @pytest_asyncio.fixture(autouse=True)

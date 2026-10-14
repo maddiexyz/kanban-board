@@ -23,9 +23,12 @@ export function setStoredToken(token: string | null): void {
   }
 }
 
+let refreshingPromise: Promise<void> | null = null;
+
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retry = true
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
@@ -39,6 +42,27 @@ async function request<T>(
     headers,
     credentials: "include", // pass HttpOnly refresh cookies
   });
+
+  // H1: Auto-refresh access token on 401 and retry request once
+  if (response.status === 401 && retry && !endpoint.startsWith("/api/auth/")) {
+    refreshingPromise ??= authApi
+      .refresh()
+      .then(() => {})
+      .finally(() => {
+        refreshingPromise = null;
+      });
+
+    try {
+      await refreshingPromise;
+    } catch {
+      setStoredToken(null);
+      const error: any = new Error("Session expired");
+      error.status = 401;
+      throw error;
+    }
+
+    return request<T>(endpoint, options, false);
+  }
 
   if (!response.ok) {
     let errorDetail = response.statusText;

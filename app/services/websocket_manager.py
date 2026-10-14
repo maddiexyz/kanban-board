@@ -53,15 +53,22 @@ class ConnectionManager:
         message: str,
         exclude: Optional[WebSocket] = None,
     ) -> None:
-        """Send message text to all connected WebSocket clients for a board."""
+        """Send message text to all connected WebSocket clients for a board concurrently."""
         connections = self.active_connections.get(board_id, set()).copy()
         dead_sockets = []
 
-        for ws in connections:
-            if ws is not exclude:
-                try:
-                    await ws.send_text(message)
-                except Exception:
+        async def _send_safe(ws: WebSocket) -> bool:
+            try:
+                await asyncio.wait_for(ws.send_text(message), timeout=3.0)
+                return True
+            except Exception:
+                return False
+
+        targets = [ws for ws in connections if ws is not exclude]
+        if targets:
+            results = await asyncio.gather(*(_send_safe(ws) for ws in targets), return_exceptions=True)
+            for ws, ok in zip(targets, results):
+                if ok is not True:
                     dead_sockets.append(ws)
 
         if dead_sockets:
@@ -71,33 +78,49 @@ class ConnectionManager:
                         self.active_connections[board_id].discard(dead_ws)
 
     async def _redis_subscriber(self, board_id: uuid.UUID) -> None:
-        """Background worker that consumes Redis Pub/Sub events and broadcasts to WebSockets."""
+        """Background worker that consumes Redis Pub/Sub events and broadcasts to WebSockets with auto-reconnect."""
         channel_name = f"board:{board_id}"
-        pubsub = None
-        try:
-            redis = await get_redis()
-            pubsub = redis.pubsub()
-            await pubsub.subscribe(channel_name)
+        backoff = 1.0
 
-            async for msg in pubsub.listen():
-                if msg and msg.get("type") == "message":
-                    raw_data = msg.get("data")
-                    if isinstance(raw_data, (bytes, bytearray)):
-                        text_data = raw_data.decode("utf-8")
-                    else:
-                        text_data = str(raw_data)
-                    await self.broadcast_to_board(board_id, text_data)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(f"[Redis Subscriber Error for {channel_name}]: {e}")
-        finally:
-            if pubsub is not None:
-                try:
-                    await pubsub.unsubscribe(channel_name)
-                    await pubsub.aclose()
-                except Exception:
-                    pass
+        while True:
+            # Check if there are still active clients
+            async with self._lock:
+                if board_id not in self.active_connections or not self.active_connections[board_id]:
+                    break
+
+            pubsub = None
+            try:
+                redis = await get_redis()
+                pubsub = redis.pubsub()
+                await pubsub.subscribe(channel_name)
+                backoff = 1.0  # Reset backoff on successful connect
+
+                async for msg in pubsub.listen():
+                    async with self._lock:
+                        if board_id not in self.active_connections or not self.active_connections[board_id]:
+                            break
+
+                    if msg and msg.get("type") == "message":
+                        raw_data = msg.get("data")
+                        if isinstance(raw_data, (bytes, bytearray)):
+                            text_data = raw_data.decode("utf-8")
+                        else:
+                            text_data = str(raw_data)
+                        await self.broadcast_to_board(board_id, text_data)
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"[Redis Subscriber Error for {channel_name}]: {e}")
+                await asyncio.sleep(min(backoff, 10.0))
+                backoff = min(backoff * 2, 30.0)
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe(channel_name)
+                        await pubsub.aclose()
+                    except Exception:
+                        pass
 
     async def broadcast_event(
         self,

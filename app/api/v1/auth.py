@@ -5,6 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
 
+from datetime import datetime, timezone
+import anyio
+from sqlalchemy.exc import IntegrityError
+
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
@@ -13,8 +17,9 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    DUMMY_PASSWORD_HASH,
 )
-from app.core.redis import block_token, is_token_blocked
+from app.core.redis import block_token, is_token_blocked, consume_token
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.auth import (
@@ -54,8 +59,10 @@ async def register(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    email_normalized = str(payload.email).lower().strip()
+
     # Check if email is already registered
-    existing_stmt = select(User).where(User.email == payload.email)
+    existing_stmt = select(User).where(User.email == email_normalized)
     existing_res = await db.execute(existing_stmt)
     if existing_res.scalar_one_or_none():
         raise HTTPException(
@@ -63,29 +70,41 @@ async def register(
             detail="An account with this email already exists",
         )
 
+    # Hash password in worker thread to prevent event loop starvation
+    hashed_pw = await anyio.to_thread.run_sync(hash_password, payload.password)
+
     # Create new user
-    display_name = payload.display_name or payload.email.split("@")[0].capitalize()
+    display_name = payload.display_name or email_normalized.split("@")[0].capitalize()
     new_user = User(
-        email=payload.email,
+        email=email_normalized,
         display_name=display_name,
-        hashed_password=hash_password(payload.password),
+        hashed_password=hashed_pw,
     )
     db.add(new_user)
-    await db.flush()  # assign user.id
+    
+    try:
+        await db.flush()  # assign user.id
 
-    # Create default workspace for new user
-    default_workspace = Workspace(name="My Workspace")
-    db.add(default_workspace)
-    await db.flush()
+        # Create default workspace for new user
+        default_workspace = Workspace(name="My Workspace")
+        db.add(default_workspace)
+        await db.flush()
 
-    # Assign user as owner
-    membership = WorkspaceMember(
-        workspace_id=default_workspace.id,
-        user_id=new_user.id,
-        role="owner",
-    )
-    db.add(membership)
-    await db.commit()
+        # Assign user as owner
+        membership = WorkspaceMember(
+            workspace_id=default_workspace.id,
+            user_id=new_user.id,
+            role="owner",
+        )
+        db.add(membership)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email already exists",
+        )
+
     await db.refresh(new_user)
 
     # Issue tokens
@@ -169,17 +188,22 @@ async def login(
                 detail="Invalid form data payload",
             )
 
-    if not email or not password:
+    if not email or not password or not isinstance(email, str) or not isinstance(password, str):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Missing required fields: email/username and password",
+            detail="Missing required valid string fields: email/username and password",
         )
 
-    stmt = select(User).where(User.email == email)
+    email_normalized = email.lower().strip()
+    stmt = select(User).where(User.email == email_normalized)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
-    if not user or not verify_password(password, user.hashed_password):
+    # Always verify password against real or dummy hash to prevent user enumeration via timing attack
+    target_hash = user.hashed_password if user else DUMMY_PASSWORD_HASH
+    is_valid = await anyio.to_thread.run_sync(verify_password, password, target_hash)
+
+    if not user or not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -228,10 +252,22 @@ async def refresh_token(
             )
 
         jti = token_payload.get("jti")
-        if jti and await is_token_blocked(jti):
+        if not jti:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token has been revoked",
+                detail="Invalid token payload",
+            )
+
+        # Atomically consume old refresh token to prevent replay/race conditions
+        exp = token_payload.get("exp", 0)
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        remaining = max(1, exp - now_ts) if exp > 0 else (86400 * settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        consumed = await consume_token(jti, remaining)
+        if not consumed:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has been revoked or already used",
             )
 
         user_id_str = token_payload.get("sub")
@@ -261,13 +297,6 @@ async def refresh_token(
     new_refresh_token, new_jti, max_age = create_refresh_token(subject=str(user.id))
     _set_refresh_cookie(response, new_refresh_token, max_age)
 
-    # Invalidate previous refresh token
-    if jti:
-        exp = token_payload.get("exp", 0)
-        now_ts = int(request.state.now_ts if hasattr(request.state, "now_ts") else 0)
-        remaining = max(1, exp - now_ts) if exp > 0 else 86400
-        await block_token(jti, remaining)
-
     return TokenResponse(
         access_token=new_access_token,
         token_type="bearer",
@@ -285,6 +314,21 @@ async def logout(
     response: Response,
     current_user: User = Depends(get_current_user),
 ):
+    # Invalidate access token from Authorization header if present
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        access_token_str = auth_header.split(" ", 1)[1]
+        try:
+            acc_payload = decode_token(access_token_str)
+            acc_jti = acc_payload.get("jti")
+            if acc_jti:
+                acc_exp = acc_payload.get("exp", 0)
+                now_ts = int(datetime.now(timezone.utc).timestamp())
+                acc_remaining = max(1, acc_exp - now_ts) if acc_exp > 0 else (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+                await block_token(acc_jti, acc_remaining)
+        except Exception:
+            pass
+
     # Invalidate refresh token from cookie if present
     refresh_token = request.cookies.get(settings.REFRESH_COOKIE_NAME)
     if refresh_token:
@@ -293,7 +337,9 @@ async def logout(
             jti = payload.get("jti")
             if jti:
                 exp = payload.get("exp", 0)
-                await block_token(jti, 86400 * settings.REFRESH_TOKEN_EXPIRE_DAYS)
+                now_ts = int(datetime.now(timezone.utc).timestamp())
+                remaining = max(1, exp - now_ts) if exp > 0 else (86400 * settings.REFRESH_TOKEN_EXPIRE_DAYS)
+                await block_token(jti, remaining)
         except Exception:
             pass
 

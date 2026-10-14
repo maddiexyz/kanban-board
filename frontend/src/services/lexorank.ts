@@ -1,6 +1,13 @@
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 export const DEFAULT_INITIAL_RANK = "0|100000:";
 
+export class RankSpaceExhausted extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RankSpaceExhausted";
+  }
+}
+
 export function between(prevRank?: string | null, nextRank?: string | null): string {
   // 1. Both empty
   if (!prevRank && !nextRank) {
@@ -14,8 +21,12 @@ export function between(prevRank?: string | null, nextRank?: string | null): str
       const rClean = r.replace(":", "");
       if (/^\d+$/.test(rClean)) {
         const val = parseInt(rClean, 10);
-        const nextVal = Math.floor(val / 2);
-        return `${bucket}|${nextVal.toString().padStart(6, "0")}:`;
+        if (val > 1) {
+          const nextVal = Math.floor(val / 2);
+          return `${bucket}|${nextVal.toString().padStart(6, "0")}:`;
+        } else {
+          throw new RankSpaceExhausted(`Rank space exhausted before '${nextRank}'`);
+        }
       }
     }
     const idx = ALPHABET.indexOf(nextRank[0]);
@@ -44,7 +55,7 @@ export function between(prevRank?: string | null, nextRank?: string | null): str
           const step = Math.max(1, Math.floor((999999 - val) / 2));
           return `${bucket}|${(val + step).toString().padStart(6, "0")}:`;
         } else {
-          return `${bucket}|${rClean}n:`;
+          throw new RankSpaceExhausted(`Rank space exhausted after '${prevRank}'`);
         }
       }
     }
@@ -57,6 +68,10 @@ export function between(prevRank?: string | null, nextRank?: string | null): str
 
   const p = prevRank!;
   const q = nextRank!;
+
+  if (p >= q) {
+    throw new Error(`prevRank ('${p}') must be strictly less than nextRank ('${q}')`);
+  }
 
   // 4. Handle bucketed ranks
   if (p.includes("|") && q.includes("|")) {
@@ -72,7 +87,7 @@ export function between(prevRank?: string | null, nextRank?: string | null): str
           const mid = Math.floor((n1 + n2) / 2);
           return `${b1}|${mid.toString().padStart(6, "0")}:`;
         }
-        return `${b1}|${n1}5:`;
+        throw new RankSpaceExhausted(`Rank space exhausted between '${p}' and '${q}'`);
       }
     }
   }

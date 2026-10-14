@@ -160,7 +160,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
           const finalCols = colsWithoutCard.map((col) => {
             if (col.id === newMove.targetColumnId) {
               const updatedCards = [...col.cards, movedCard!].sort((a, b) =>
-                a.rank.localeCompare(b.rank)
+                a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
               );
               return { ...col, cards: updatedCards };
             }

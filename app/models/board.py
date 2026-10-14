@@ -78,7 +78,7 @@ class Column(Base):
         nullable=False,
     )
     rank: Mapped[str] = mapped_column(
-        String(64),
+        String(64, collation="C"),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -105,6 +105,7 @@ class Card(Base):
     __table_args__ = (
         Index("idx_cards_column_rank", "column_id", "rank"),
         Index("idx_cards_board", "board_id"),
+        Index("idx_cards_assignee", "assignee_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -132,7 +133,7 @@ class Card(Base):
         nullable=True,
     )
     rank: Mapped[str] = mapped_column(
-        String(64),
+        String(64, collation="C"),
         nullable=False,
     )
     version: Mapped[int] = mapped_column(
